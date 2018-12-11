@@ -9,22 +9,23 @@ import gym
 from optimizers.ppo import PPO
 from policies.policy import Policy
 from utils.storage import Storage
-from utils.envs import make_env_vec
+from utils.envs import make_env_vec, get_vec_normalize
 
+import csv
 
-n_eps = 401
-learning_rate = 3e-5
+n_eps = 20000
+learning_rate = 3e-4
 clip_param = 0.2
-n_steps = 400
+n_steps = 5000
 value_loss_coef = 0.5
 entropy_coef = 0.01
 alpha = 0.99
 max_grad_norm = 0.5
-n_processes = 16
+n_processes = 8
 discount = 0.99 #gamma
 gae_coef = 0.95
 ppo_epoch = 10
-n_mini_batch = 32
+n_mini_batch = 128
 epsilon = 1e-8
 
 
@@ -32,11 +33,14 @@ seed = 42
 log_dir = './log'
 save_path = './saved_models'
 
-env_names = ['CartPole-v0', 'CartPole-v1', 'Acrobot-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Pendulum-v0']
-env_num = 2
+env_names = ['CartPole-v1', 'Acrobot-v1', 'MountainCar-v0', 'MountainCarContinuous-v0', 'Pendulum-v0']
+# env_names = ['RoboschoolAnt-v1', 'RoboschoolHumanoidFlagrun-v1', 'RoboschoolWalker2d-v1',
+#              'RoboschoolHalfCheetah-v1', 'RoboschoolHopper-v1', 'RoboschoolReacher-v1', 'RoboschoolHumanoid-v1',
+#              'RoboschoolHumanoid-v1']
+env_num = 0
 
 load = False
-load_eps = 5
+load_eps = 10000
 
 
 def main():
@@ -47,12 +51,17 @@ def main():
     # creating vector of environments
     envs = make_env_vec(env_names[env_num], seed, n_processes, discount, log_dir, device)
 
-    if load:
-        policy = torch.load(os.path.join(save_path, '{}-{}.pt'.format(env_names[env_num], load_eps)))
+    start_eps = 0
 
     # init policy
-    policy = Policy(envs.observation_space.shape, envs.action_space)
-    policy.to(device)
+    if load:
+        print('Loading model')
+        policy = torch.load(os.path.join(save_path, '{}-{}.pt'.format(env_names[env_num], load_eps)))
+        start_eps = load_eps
+    else:
+        print('New model')
+        policy = Policy(envs.observation_space.shape, envs.action_space)
+        policy.to(device)
 
     # init optimizer
     agent = PPO(policy, clip_param, ppo_epoch, n_mini_batch,
@@ -66,10 +75,14 @@ def main():
     storage.add_obs(obs, step=0)
     storage.to(device)
 
-    episode_rewards = deque(maxlen=20)
+    episode_rewards = deque(maxlen=50)
 
     start = time.time()
-    for eps in range(n_eps):
+
+    with open('metrics_{}.csv'.format(env_names[env_num]), 'w') as metrics:
+        metrics.write('mean_reward,median_reward,min_reward,max_reward,value_loss,action_loss\n')
+
+    for eps in range(start_eps, n_eps + 1):
         for step in range(n_steps):
 
             with torch.no_grad():
@@ -106,20 +119,30 @@ def main():
         # reward outputs
         if eps % 1 == 0 and len(episode_rewards) > 1:
             end = time.time()
+            mean_reward = np.mean(episode_rewards)
+            median_reward = np.median(episode_rewards)
+            min_reward = np.min(episode_rewards)
+            max_reward = np.max(episode_rewards)
             print("Updates {}, timesteps {}, FPS {} \n Last {} training episodes: mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}\n".
                 format(eps, total_num_steps,
                        int(total_num_steps / (end - start)),
                        len(episode_rewards),
-                       np.mean(episode_rewards),
-                       np.median(episode_rewards),
-                       np.min(episode_rewards),
-                       np.max(episode_rewards)))
-            # print('Value loss {}. Action_loss {}\n'.format(value_loss, action_loss))
+                       mean_reward,
+                       median_reward,
+                       min_reward,
+                       max_reward))
 
-        # saveing model
+            # print('Value loss {}. Action_loss {}\n'.format(value_loss, action_loss))
+            with open('metrics_{}.csv'.format(env_names[env_num]), 'a') as metrics:
+                metrics.write('{},{},{},{},{},{}\n'.format(mean_reward,median_reward,min_reward,max_reward,value_loss,action_loss))
+
+        # saving model
         if eps % 5 == 0 and len(episode_rewards) > 1:
             print('Saving model after {} episodes'.format(eps))
-            torch.save(policy, os.path.join(save_path, '{}-{}.pt'.format(env_names[env_num], eps)))
+
+            save_model = policy
+            save_model = [save_model, getattr(get_vec_normalize(envs), 'ob_rms', None)]
+            torch.save(save_model, os.path.join(save_path, '{}-{}.pt'.format(env_names[env_num], eps)))
 
 
     envs.close()

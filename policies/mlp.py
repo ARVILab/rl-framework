@@ -10,44 +10,40 @@ class MLP(nn.Module):
         self.n_inputs = obs_shape[0]
         self._hidden_size = hidden_size
 
-        # init_ = lambda m: init(m,
-        #     init_normc_,
-        #     lambda x: nn.init.constant_(x, 0))
-        #
-        # self.actor = nn.Sequential(
-        #     init_(nn.Linear(self.n_inputs, hidden_size)),
-        #     nn.Tanh(),
-        #     init_(nn.Linear(hidden_size, hidden_size)),
-        #     nn.Tanh()
-        # )
-        #
-        # self.critic = nn.Sequential(
-        #     init_(nn.Linear(self.n_inputs, hidden_size)),
-        #     nn.Tanh(),
-        #     init_(nn.Linear(hidden_size, hidden_size)),
-        #     nn.Tanh(),
-        #     init_(nn.Linear(hidden_size, 1))
-        # )
+        init_ = lambda m: init(m,
+            init_normc_,
+            lambda x: nn.init.constant_(x, 0))
 
         self.actor = nn.Sequential(
-            nn.Linear(self.n_inputs, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU()
+            init_(nn.Linear(self.n_inputs, hidden_size)),
+            nn.Tanh(),
+            init_(nn.Linear(hidden_size, hidden_size)),
+            nn.Tanh()
         )
 
         self.critic = nn.Sequential(
-            nn.Linear(self.n_inputs, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, 1)
+            init_(nn.Linear(self.n_inputs, hidden_size)),
+            nn.Tanh(),
+            init_(nn.Linear(hidden_size, hidden_size)),
+            nn.Tanh(),
+            init_(nn.Linear(hidden_size, 1))
         )
 
+
+        # self.actor = nn.Sequential(
+        #     nn.Linear(self.n_inputs, hidden_size),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.ReLU()
+        # )
+        #
+        # self.critic = nn.Sequential(
+        #     nn.Linear(self.n_inputs, hidden_size),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_size, 1)
+        # )
 
         self.train()
 

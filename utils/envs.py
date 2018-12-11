@@ -4,6 +4,7 @@ import numpy as np
 import torch
 
 import gym
+import roboschool
 
 from baselines import bench
 from baselines.common.vec_env import VecEnvWrapper
@@ -36,6 +37,15 @@ def make_env_vec(env_name, seed, n_processes, gamma, log_dir, device):
             envs = VecNormalize(envs, gamma=gamma)
     envs = VecPyTorch(envs, device)
     return envs
+
+
+def get_vec_normalize(venv):
+    if isinstance(venv, VecNormalize):
+        return venv
+    elif hasattr(venv, 'venv'):
+        return get_vec_normalize(venv.venv)
+
+    return None
 
 class VecNormalize(VecNormalize_):
     def __init__(self, *args, **kwargs):
