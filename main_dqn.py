@@ -16,6 +16,7 @@ max_grad_norm = 0.5
 discount = 0.99
 mini_batch_size = 256
 update_epochs = 1
+target_policy_update = 5
 e_decay = 0.02
 
 seed = 42
@@ -33,8 +34,11 @@ def main():
 
     print('New model')
     policy = Policy('dqn', env.observation_space.shape[0], env.action_space.n)
+    target_policy = Policy('dqn', env.observation_space.shape[0], env.action_space.n)
     policy.to(device)
-    optimizer = DQNOptimizer(policy, mini_batch_size, discount, learning_rate, update_epochs)
+    target_policy.to(device)
+    target_policy.load_state_dict(policy.state_dict())
+    optimizer = DQNOptimizer(policy, target_policy, mini_batch_size, discount, learning_rate, update_epochs)
 
     episode_rewards = deque(maxlen=50)
 
@@ -44,7 +48,7 @@ def main():
         state = env.reset()
         storage = Storage(device=device)
 
-        episode_rewards.append(test_env(policy, gym.make(env_name)))
+        episode_rewards.append(test_env(target_policy, gym.make(env_name)))
         if eps % 5 == 0:
             print('Avg reward', np.mean(episode_rewards))
 
@@ -67,6 +71,9 @@ def main():
         storage.compute()
 
         loss = optimizer.update(storage)
+
+        if eps % target_policy_update:
+            target_policy.load_state_dict(policy.state_dict())
 
         with open('metrics.csv', 'a') as metrics:
             metrics.write('{}\n'.format(loss))

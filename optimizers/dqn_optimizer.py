@@ -4,12 +4,14 @@ import torch.optim as optim
 class DQNOptimizer(object):
     def __init__(self,
                  policy,
+                 target_policy,
                  mini_batch_size,
                  discount,
                  lr,
                  update_epochs):
 
         self.policy = policy
+        self.target_policy = target_policy
         self.mini_batch_size = mini_batch_size
         self.discount = discount
         self.update_epochs = update_epochs
@@ -28,7 +30,7 @@ class DQNOptimizer(object):
                 states, actions, rewards, next_states, masks = sample
 
                 q_values = self.policy.get_value(states)
-                next_q_values = self.policy.get_value(next_states)
+                next_q_values = self.target_policy.get_value(next_states)
 
                 q_value = q_values.gather(1, actions)
 
