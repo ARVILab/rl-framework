@@ -13,6 +13,8 @@ class Policy(nn.Module):
             self.policy = ActorCritic(obs_shape, action_space)
         elif self.policy_name == 'dqn':
             self.policy = DQN(obs_shape, action_space)
+        else:
+            raise ValueError("Name not found!")
 
     def forward(self, *args):
          raise NotImplementedError
