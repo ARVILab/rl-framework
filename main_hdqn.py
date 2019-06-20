@@ -32,9 +32,10 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 def get_intrinsic_reward(goal, state, decimals):
 
     goal_round = round(goal, ndigits=decimals)
-    state_rond = round(state[0].item(), ndigits=decimals)
+    state_round = round(state[0].item(), ndigits=decimals)
 
-    return 1.0 if goal_round == state_rond else 0.0
+    return 1.0 if goal_round == state_round else 0.0
+
 
 def main():
     torch.set_num_threads(1)
@@ -42,7 +43,6 @@ def main():
 
     # Define goal set
     goal_object = Goal()
-
 
     env = MountainCarEnvInherit()
     env.seed(42)
@@ -78,7 +78,6 @@ def main():
         storage_meta = Storage(device=device)
 
         encoded_current_state = goal_object.one_hot_current_state(state)
-        goal_reached = False
 
         episode_rewards.append(test_env(policy, gym.make(env_name), goal_object))
         if eps % 5 == 0:
@@ -134,7 +133,6 @@ def main():
         storage_meta.compute()
 
         loss = optimizer_meta.update(storage, storage_meta)
-
 
         with open('metrics.csv', 'a') as metrics:
             metrics.write('{}\n'.format(loss))
