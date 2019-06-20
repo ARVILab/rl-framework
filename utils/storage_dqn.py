@@ -14,7 +14,7 @@ class StorageDQN(object):
 
     def push(self, state, action, reward, next_state, done):
         mask = torch.FloatTensor([[0.0] if done else [1.0]]).to(self.device)
-        action = action.unsqueeze(0)
+        action = action.unsqueeze(0).to(self.device)
         reward = torch.FloatTensor(np.array([reward])).unsqueeze(1).to(self.device)
         state = state.unsqueeze(0)
         next_state = torch.FloatTensor(next_state).unsqueeze(0).to(self.device)
@@ -38,3 +38,7 @@ class StorageDQN(object):
         for indices in sampler:
             yield self.states[indices, :], self.actions[indices, :], self.rewards[indices, :], \
                   self.next_states[indices, :], self.masks[indices, :]
+
+    def __len__(self):
+
+        return len(self.states)
