@@ -73,6 +73,12 @@ class Goal(object):
 
         return (self._goals[idx])
 
+    def get_idx_by_goal(self, goal):
+
+        assert goal in self._map_step
+
+        return (self._map_step[goal])
+
     def get_decimals(self):
 
         return self._decimals
@@ -81,14 +87,18 @@ class Goal(object):
 
     def one_hot_goal(self, idx):
 
-        assert idx < self._goals.size
+        assert idx >= 0
+        assert idx < len(self._map_step)
 
         mask = [0] * self._env_map.size
 
         low_slice, high_slice = self._map_step[self._low_goal], self._map_step[self._high_goal]
 
-        masked_idx = [0 if i != idx else 1 for i in range(self._goals.size)]
-        mask[low_slice:high_slice] = masked_idx
+        if idx < self._goals.size:
+            masked_idx = [0 if i != idx else 1 for i in range(self._goals.size)]
+            mask[low_slice:high_slice] = masked_idx
+        else:
+            mask[idx] = 1
         mask = np.expand_dims(np.array(mask), axis=0)
 
         return mask

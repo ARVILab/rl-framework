@@ -36,6 +36,27 @@ def get_intrinsic_reward(goal, state, decimals):
 
     return 1.0 if goal_round == state_round else 0.0
 
+def goal_wrapper(meta_policy, state, goal_object, epsilon):
+    if np.random.rand() > epsilon:
+
+        q_value = meta_policy.get_value(torch.FloatTensor(state).to(device))
+
+        # TODO: Take deal with it. Achtung! Clipping goal according to envs min/max limits
+        goal = torch.clamp(q_value.argmax().unsqueeze(0), min=-1.2, max=0.6)
+        goal = goal.detach().cpu().item()
+        goal = round(goal, goal_object.get_decimals())
+
+        goal_idx = goal_object.get_idx_by_goal(goal)
+    else:
+
+        goal_idx = goal_object.get_random_goal_idx()
+        goal = goal_object.get_goal_by_idx(goal_idx)
+        goal = round(goal, goal_object.get_decimals())
+
+
+    encoded_goal = goal_object.one_hot_goal(goal_idx)
+
+    return goal, encoded_goal
 
 def main():
     torch.set_num_threads(1)
@@ -85,9 +106,8 @@ def main():
 
         for step in range(n_steps):
 
-            goal_idx = goal_object.get_random_goal_idx()
-            goal = goal_object.get_goal_by_idx(goal_idx)
-            encoded_goal = goal_object.one_hot_goal(goal_idx)
+            goal, encoded_goal = goal_wrapper(meta_policy, encoded_current_state, goal_object, get_epsilon(eps))
+            # print(f"Target goal: {goal}")
 
             total_extrinsic_reward = 0
 
@@ -100,8 +120,7 @@ def main():
                 joint_state_goal = torch.FloatTensor(joint_state_goal).to(device)
 
                 with torch.no_grad():
-                    # action = policy.act(state, get_epsilon(eps))
-                    action = policy.act(joint_state_goal, 0)
+                    action = policy.act(joint_state_goal, get_epsilon(eps)).to("cuda")
                 next_state, extrinsic_reward, done, _ = env.step(action.item())
 
                 # get next_state and hand-crafted reward, after- extend it with goal

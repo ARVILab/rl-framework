@@ -14,7 +14,7 @@ class Policy(nn.Module):
         elif self.policy_name == 'dqn':
             self.policy = DQN(obs_shape, action_space)
         else:
-            raise ValueError("Name not found!")
+            raise ValueError()
 
     def forward(self, *args):
          raise NotImplementedError

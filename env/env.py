@@ -78,8 +78,10 @@ def main():
         while (not done):
 
                 env.render()
-                action = 2
+
+                action = np.rand.random(env.action_space.n)
                 obs, r, done, _ = env.step(action)
+
                 print(f"{i}: {r}, {done}, {obs}")
 
 
