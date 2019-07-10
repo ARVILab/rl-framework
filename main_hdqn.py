@@ -4,14 +4,14 @@ from collections import deque
 import torch
 
 import gym
-from optimizers.hdqn_optimizer import HDQNOptimizer
+from optimizers.dqn_optimizer import DQNOptimizer
 
 from policies.policy import Policy
 from utils.storage_dqn import StorageDQN as Storage
 
 
-from env.env import MountainCarEnvInherit
-from env.goal import Goal
+from envs.env import MountainCarEnvInherit
+from envs.goal import Goal
 
 
 n_eps = 20000
@@ -22,26 +22,26 @@ discount = 0.99
 mini_batch_size = 256
 update_epochs = 1
 e_decay = 0.02
+target_policy_update = 5
 
 seed = 42
 
 env_name = 'MountainCar-v0'
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
+goal_object = Goal()
 
-def get_intrinsic_reward(goal, state, decimals):
 
-    goal_round = round(goal, ndigits=decimals)
-    state_round = round(state[0].item(), ndigits=decimals)
+def get_intrinsic_reward(goal, state):
 
-    return 1.0 if goal_round == state_round else 0.0
+    state_round = round(state[0].item(), 1)
+    return 1.0 if goal == goal_object.get_goal(state_round) else 0.0
 
 def goal_wrapper(meta_policy, state, goal_object, epsilon):
     if np.random.rand() > epsilon:
 
         q_value = meta_policy.get_value(torch.FloatTensor(state).to(device))
 
-        # TODO: Take deal with it. Achtung! Clipping goal according to envs min/max limits
         goal = torch.clamp(q_value.argmax().unsqueeze(0), min=-1.2, max=0.6)
         goal = goal.detach().cpu().item()
         goal = round(goal, goal_object.get_decimals())
@@ -62,130 +62,140 @@ def main():
     torch.set_num_threads(1)
     torch.manual_seed(0)
 
-    # Define goal set
-    goal_object = Goal()
-
     env = MountainCarEnvInherit()
     env.seed(42)
 
-    decimals = goal_object.get_decimals()
+    meta_policy = Policy('dqn', env.observation_space.shape[0], goal_object.get_size()) 
+    target_meta_policy = Policy('dqn', env.observation_space.shape[0], goal_object.get_size()) 
 
-    policy = Policy('dqn', goal_object.get_env_map_size() * 2 + 1, env.action_space.n) #Controller
-    target_policy = Policy("dqn", goal_object.get_env_map_size() * 2 + 1, env.action_space.n) #Controller
-    meta_policy = Policy("dqn", goal_object.get_env_map_size() + 1, 10) #MetaController
-    target_meta_policy = Policy("dqn", goal_object.get_env_map_size() + 1, 10) #MetaController
-
-    policy.to(device)
-    target_policy.to(device)
-    target_policy.load_state_dict(policy.state_dict())
+    policy = Policy('dqn', env.observation_space.shape[0] + 1, env.action_space.n) 
+    target_policy = Policy('dqn', env.observation_space.shape[0] + 1, env.action_space.n) 
 
     meta_policy.to(device)
     target_meta_policy.to(device)
     target_meta_policy.load_state_dict(meta_policy.state_dict())
 
-    optimizer_meta = HDQNOptimizer(policy, target_policy, meta_policy, target_meta_policy,
-                                   mini_batch_size, discount, learning_rate, update_epochs)
+    policy.to(device)
+    target_policy.to(device)
+    target_policy.load_state_dict(policy.state_dict())
+
+    optimizer_meta_policy = DQNOptimizer(meta_policy, target_meta_policy, mini_batch_size, discount, learning_rate, update_epochs)
+
+    optimizer_policy = DQNOptimizer(policy, target_policy, mini_batch_size, discount, learning_rate, update_epochs)
 
     episode_rewards = deque(maxlen=50)
 
     get_epsilon = lambda episode: np.exp(-episode * e_decay)
 
+
     for eps in range(0, n_eps + 1):
 
-        print(f"Game #{eps + 1}")
-
-        state = env.reset()
-        storage = Storage(device=device)
-        storage_meta = Storage(device=device)
-
-        encoded_current_state = goal_object.one_hot_current_state(state)
-
-        episode_rewards.append(test_env(policy, gym.make(env_name), goal_object))
-        if eps % 5 == 0:
+        if eps % 50 == 0:
+            episode_rewards.append(test_env(meta_policy, policy, MountainCarEnvInherit()))
             print('Avg reward', np.mean(episode_rewards))
 
-        for step in range(n_steps):
+        storage = Storage(device=device)
+        storage_meta = Storage(device=device)
+        print('Game', eps)
 
-            goal, encoded_goal = goal_wrapper(meta_policy, encoded_current_state, goal_object, get_epsilon(eps))
-            # print(f"Target goal: {goal}")
+        state0 = env.reset()
+        state = state0.copy()
+        state = torch.FloatTensor(state).to(device)
+        for step in range(10):
 
-            total_extrinsic_reward = 0
+            extrinsic_reward = 0
+            goal = meta_policy.act(state, get_epsilon(eps))
 
-            # while not done and not goal_reached:
-            for internal_step in range(5):
+            # while not done:
+            for internal_step in range(60):
 
-                # get state and extend it with goal
-                state = torch.FloatTensor(state).to(device)
-                joint_state_goal = np.concatenate([encoded_current_state, encoded_goal], axis=1)
-                joint_state_goal = torch.FloatTensor(joint_state_goal).to(device)
+                joint_state = torch.FloatTensor(np.concatenate([state.cpu().numpy(), [goal.item()]], axis=0)).to(device)
 
                 with torch.no_grad():
-                    action = policy.act(joint_state_goal, get_epsilon(eps)).to("cuda")
-                next_state, extrinsic_reward, done, _ = env.step(action.item())
+                    action = policy.act(joint_state, get_epsilon(eps))
 
-                # get next_state and hand-crafted reward, after- extend it with goal
-                encoded_next_state = goal_object.one_hot_current_state(next_state)
-                intrinsic_reward = get_intrinsic_reward(goal, state, decimals)
-                done = round(int(next_state[0]), ndigits=decimals) == round(goal, ndigits=decimals)
+                next_state, reward, done, _ = env.step(action.item())
 
-                joint_next_state_goal = np.concatenate([encoded_next_state, encoded_goal], axis=1)
-                storage.push(joint_state_goal, action, intrinsic_reward, joint_next_state_goal, done)
+                intrinsic_reward = get_intrinsic_reward(goal, next_state)
+                goal_reached = True if intrinsic_reward else False
 
-                total_extrinsic_reward += extrinsic_reward
+                joint_next_state = np.concatenate([next_state, [goal.item()]], axis=0)
+                storage.push(joint_state, action, intrinsic_reward, joint_next_state, done)
 
-                encoded_current_state = encoded_next_state
+                extrinsic_reward += reward
+
                 state = next_state
+                state = torch.FloatTensor(state).to(device)
 
-                if done:
+                if goal_reached or done:
                     break
 
-            encoded_current_state = torch.FloatTensor(encoded_current_state).to(device)
-            goal = torch.FloatTensor([goal]).to(device)
-            storage_meta.push(encoded_current_state, goal, total_extrinsic_reward, encoded_next_state, done)
-
-            encoded_current_state = encoded_current_state.cpu().detach().numpy()
+            goal = torch.LongTensor([goal]).to(device)
+            storage_meta.push(torch.FloatTensor(state0).to(device), goal, extrinsic_reward, next_state, done)
 
             if done:
-                state = env.reset()
+                break
 
         storage.compute()
         storage_meta.compute()
 
-        loss = optimizer_meta.update(storage, storage_meta)
+        loss_meta = optimizer_meta_policy.update(storage_meta)
+        loss = optimizer_policy.update(storage)
+
+        if eps % target_policy_update:
+            target_meta_policy.load_state_dict(meta_policy.state_dict())
+            target_policy.load_state_dict(policy.state_dict())
 
         with open('metrics.csv', 'a') as metrics:
-            metrics.write('{}\n'.format(loss))
+            metrics.write('{},{}\n'.format(loss_meta, loss))
 
 
-def test_env(policy, env, goal_object, vis=False):
-    state = env.reset()
-    if vis: env.render()
-    done = False
-    total_reward = 0
+def test_env(meta_policy, policy, env, vis=True):
 
-    decimals = goal_object.get_decimals()
-    goal_idx = goal_object.get_random_goal_idx()
-    goal = goal_object.get_goal_by_idx(goal_idx)
-    encoded_goal = goal_object.one_hot_goal(goal_idx)
+    state0 = env.reset()
+    state = state0.copy()
+    state = torch.FloatTensor(state).to(device)
+    for step in range(10):
 
-    while not done:
+        extrinsic_reward = 0
+        goal = meta_policy.act(state)
 
-        encoded_current_state = goal_object.one_hot_current_state(state)
-        state = torch.FloatTensor(state).to(device)
+        print('Step {}, Goal {}'.format(step, goal.item()))
 
-        joint_state_goal = np.concatenate([encoded_current_state, encoded_goal], axis=1)
-        joint_state_goal = torch.FloatTensor(joint_state_goal).to(device)
+        done = False
+        total_intrinsic_reward = 0
 
-        action = policy.act(joint_state_goal)
-        next_state, reward, done, _ = env.step(action.item())
+        # while not done:
+        for internal_step in range(60):
 
-        intrinsic_reward = get_intrinsic_reward(goal, state, decimals)
+            if vis: env.render()
 
-        state = next_state
-        if vis: env.render()
-        total_reward += (reward + intrinsic_reward)
-        if done: break
-    return total_reward
+            joint_state = torch.FloatTensor(np.concatenate([state.cpu().numpy(), [goal.item()]], axis=0)).to(device)
+
+            with torch.no_grad():
+                action = policy.act(joint_state)
+
+            next_state, reward, done, _ = env.step(action.item())
+
+            intrinsic_reward = get_intrinsic_reward(goal, next_state)
+            goal_reached = True if intrinsic_reward else False
+
+            extrinsic_reward += reward
+            total_intrinsic_reward += intrinsic_reward
+
+            state = next_state
+            state = torch.FloatTensor(state).to(device)
+
+            if goal_reached or done:
+                break
+
+        if done:
+            break
+
+    print('Intrinsic reward', total_intrinsic_reward)
+    env.close()
+
+    return extrinsic_reward
 
 
 if __name__ == '__main__':

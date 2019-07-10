@@ -26,18 +26,18 @@ class StorageDQN(object):
         self.next_states.append(next_state)
 
     def compute(self, ):
-        self.states = torch.cat(self.states)
-        self.actions = torch.cat(self.actions)
-        self.rewards = torch.cat(self.rewards)
-        self.masks = torch.cat(self.masks)
-        self.next_states = torch.cat(self.next_states)
+        self.states_tensor = torch.cat(self.states)
+        self.actions_tensor = torch.cat(self.actions)
+        self.rewards_tensor = torch.cat(self.rewards)
+        self.masks_tensor = torch.cat(self.masks)
+        self.next_states_tensor = torch.cat(self.next_states)
 
     def sample(self, mini_batch_size):
-        batch_size = self.states.size(0)
+        batch_size = self.states_tensor.size(0)
         sampler = BatchSampler(SubsetRandomSampler(range(batch_size)), mini_batch_size, drop_last=False)
         for indices in sampler:
-            yield self.states[indices, :], self.actions[indices, :], self.rewards[indices, :], \
-                  self.next_states[indices, :], self.masks[indices, :]
+            yield self.states_tensor[indices, :], self.actions_tensor[indices, :], self.rewards_tensor[indices, :], \
+                  self.next_states_tensor[indices, :], self.masks_tensor[indices, :]
 
     def __len__(self):
 

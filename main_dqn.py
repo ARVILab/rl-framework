@@ -92,6 +92,7 @@ def test_env(policy, env, vis=False):
         if vis: env.render()
         total_reward += reward
         if done: break
+    env.close()
     return total_reward
 
 

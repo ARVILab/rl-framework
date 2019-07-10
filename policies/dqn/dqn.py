@@ -26,5 +26,5 @@ class DQN(nn.Module):
             action = q_value.argmax().unsqueeze(0)
         else:
             actions = np.random.rand(self.num_outputs)
-            action = torch.LongTensor(np.array([actions.argmax()]))   # apply mask if needed
+            action = torch.LongTensor([actions.argmax()])   # apply mask if needed
         return action
