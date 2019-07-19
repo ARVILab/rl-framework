@@ -3,7 +3,7 @@ import numpy as np
 
 class Goal(object):
 
-    def __init__(self, low_goal=-1.2, high_goal=0.6, step=0.1):
+    def __init__(self, low_goal=-0.6, high_goal=0.6, step=0.1):
 
         self.low_goal = low_goal
         self.high_goal = high_goal
@@ -32,7 +32,7 @@ class Goal(object):
 
     def get_goal(self, state):
 
-        return self.state_goal_map[state]
+        return self.state_goal_map[np.clip(state, self.low_goal, 0.5)]
 
     def get_size(self):
 
